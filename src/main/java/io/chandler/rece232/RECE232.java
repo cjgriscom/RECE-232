@@ -80,6 +80,8 @@ public final class RECE232 {
 	 */
 	public static final class RECE232Encoder {
 		
+		private boolean useTabs = false;
+		
 		private int nLongwords;
 		
 		private int i = 0;
@@ -91,6 +93,16 @@ public final class RECE232 {
 		int sum2 = 0; // Fletcher high
 		
 		private RECE232Encoder() { }
+		
+		/**
+		 * Use tab character instead of non-printable ASCII 127 (DEL)
+		 * @param useTabs true to use tabs.  Default is false.
+		 * @return
+		 */
+		public RECE232Encoder setUseTabs(boolean useTabs) {
+			this.useTabs = useTabs;
+			return this;
+		}
 		
 		public RECE232Encoder init(byte header6Bit, int nLongwords) {
 			if (nLongwords <= 0) throw new IllegalStateException("Must encode at least one longword");
@@ -111,6 +123,11 @@ public final class RECE232 {
 			fletcher >>>= 6;
 			ascii[i++] = (byte)((fletcher & 0b011111)+0x20);
 			if (nLongwords != 0) throw new IllegalStateException("Expected " + nLongwords + " more longwords");
+			if (useTabs) {
+				for (int j = 0; j < ascii.length; j++) {
+					if (ascii[j] == 127) ascii[j] = (byte)'\t';
+				}
+			}
 			return ascii;
 		}
 		
@@ -169,6 +186,7 @@ public final class RECE232 {
 		private int[] recon;
 		private boolean skipRecoveryOnCorruptedChecksum = false;
 		private boolean failOnCorruptedChecksum = false;
+		private boolean convertTabs = false;
 		
 		private RECE232Decoder() { }
 		
@@ -196,8 +214,19 @@ public final class RECE232 {
 			return this;
 		}
 		
+		/**
+		 * Allow tab character in place of non-printable 127 (ASCII DEL)
+		 * @param convertTabs True to detect and convert tabs. Default is false.
+		 * @return
+		 */
+		public RECE232Decoder setConvertTabs(boolean convertTabs) {
+			this.convertTabs = convertTabs;
+			return this;
+		}
+		
 		private static final int GOOD_MASK = 0b11111_111111_11111;
 		public boolean load(byte[] src) {
+			
 			int len = src.length;
 			len -= 3; // Subtract fletcher footer, remainder should be n*8b
 			if (len < 7) return false; // below minimum recoverable bytes
@@ -214,6 +243,12 @@ public final class RECE232 {
 			// ! (F) represents an out-of-range character
 			// 5 (0) is a 5-bit character, 6 (1) is a 6-bit character
 			// !65, 5!5, 56!, 6(G)65, 65(G)5, 656(G)
+			
+			if (convertTabs) {
+				if (fF2 == (byte)'\t') fF2 = 127;
+				if (fF1 == (byte)'\t') fF1 = 127;
+				if (fF0 == (byte)'\t') fF0 = 127;
+			}
 			
 			short fletFErrSig = 0x000;
 			if (fF0 < 32 || fF0 >= 128) fletFErrSig |= 0xF00;
@@ -279,6 +314,8 @@ public final class RECE232 {
 				for (; ; i++) {
 					if (i < src.length - 2) { // Allow pushing into the first fletcher char, in case there's a gap before there
 						int byt = src[i] & 0xff;
+						if (convertTabs && byt == (byte)'\t') byt = 127;
+						
 						if (byt < 32 || byt >= 128) {
 							if (DEBUG) System.out.print("!");
 							// Out of ascii range; consider this a corrupt character
