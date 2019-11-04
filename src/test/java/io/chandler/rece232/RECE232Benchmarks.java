@@ -30,8 +30,10 @@ import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Random;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -51,7 +53,9 @@ import io.chandler.rece232.RECE232.RECE232Encoder;
 public class RECE232Benchmarks {
 	
 	// Class to run benchmark thread and store result
-	class Benchmarker {
+	static class Benchmarker {
+		private static final ConcurrentHashMap<String, String> corruptedList = new ConcurrentHashMap<>();
+		
 		private final RECE232Encoder encoder = RECE232.getEncoder();
 		private final RECE232Decoder decoder = RECE232.getDecoder();
 
@@ -71,12 +75,15 @@ public class RECE232Benchmarks {
 		
 		public double avgMsgLength = 0;
 		
-		public Benchmarker(int maxIntsInMessage, int totalMsgs, double probBitFlip, double probDroppedByte, Random rand) {
+		public Benchmarker(int maxIntsInMessage, int totalMsgs, double probBitFlip, double probDroppedByte,
+				Random rand, boolean skipRecoveryOnCorruptedChecksum, boolean failCorruptedChecksum) {
 			this.maxIntsInMessage = maxIntsInMessage;
 			this.totalMsgs = totalMsgs;
 			this.probBitFlip = probBitFlip;
 			this.probDroppedByte = probDroppedByte;
 			this.rand = rand;
+			decoder.setSkipRecoveryOnCorruptedChecksum(skipRecoveryOnCorruptedChecksum);
+			decoder.setFailOnCorruptedChecksum(failCorruptedChecksum);
 		}
 		
 		public Benchmarker run() {
@@ -120,12 +127,13 @@ public class RECE232Benchmarks {
 					}
 				}
 				
+				byte[] result_mod = result;
 				if (modified) {
 					modifiedMessageCount++;
-					result = errEncoder.toByteArray();
+					result_mod = errEncoder.toByteArray();
 				}
 				
-				boolean loaded = decoder.load(result);
+				boolean loaded = decoder.load(result_mod);
 				boolean correct = true;
 				
 				if (loaded) {
@@ -143,11 +151,12 @@ public class RECE232Benchmarks {
 					recoveredCount++;
 				} else if ((!loaded || !correct) && !modified) {
 					// Should never happen
-					throw new RuntimeException("Decoder failed for " + new String(result));
+					throw new RuntimeException("Decoder failed for " + new String(result_mod));
 				} else if (!loaded && modified) {
 					unrecoverableCount++;
 				}else if (loaded && !correct && modified) {
 					wrongCount++;
+					corruptedList.put(new String(result), new String(result_mod));
 				}
 			}
 			this.avgMsgLength = msgLength / (double)totalMsgs;
@@ -168,6 +177,9 @@ public class RECE232Benchmarks {
 		double probBitFlip     = 0.002; // Computed for each bit
 		double probDroppedByte = 0.005; // Computed for each byte
 		int maxIntsInMessage = 7;
+		
+		boolean skipRecoveryOnCorruptedChecksum = false,
+				failCorruptedChecksum = false;
 		/******************/
 		
 		
@@ -192,9 +204,13 @@ public class RECE232Benchmarks {
 		IntStream.rangeClosed(1, INSTANCES).forEach(i -> {
 			callables.add(() -> {
 				Random rand = new Random(seedGen.nextLong());
-				Benchmarker bch = new Benchmarker(maxIntsInMessage, msgsForEachInstance, probBitFlip, probDroppedByte, rand);
+				Benchmarker bch = new Benchmarker(
+						maxIntsInMessage, msgsForEachInstance, probBitFlip, probDroppedByte,
+						rand,
+						skipRecoveryOnCorruptedChecksum, failCorruptedChecksum);
+				bch.run();
 				System.out.println("Completed benchmark " + i);
-				return bch.run();
+				return bch;
 			});
 		});
 		List<Future<Benchmarker>> taskFutureList = executorService.invokeAll(callables);
@@ -227,6 +243,11 @@ public class RECE232Benchmarks {
 		System.out.printf ("  Recovered messages: " + intfrm_e, recoveredCount, 100. * recoveredCount / et);
 		System.out.printf ("  Lost messages:      " + intfrm_e, unrecoverableCount, 100. * unrecoverableCount / et);
 		System.out.printf ("  Corrupted messages: " + intfrm_e, wrongCount, 100. * wrongCount / et);
+		
+		System.out.println();
+		for (Entry<String, String> corrupted : Benchmarker.corruptedList.entrySet()) {
+			//System.out.println(corrupted.getKey() + " -> " + corrupted.getValue());
+		}
 	}
 	
 }

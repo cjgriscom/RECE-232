@@ -75,7 +75,7 @@ public final class RECE232 {
 	}
 	
 	/**
-	 * Stateful RxECC Encoder
+	 * Stateful RECE232 Encoder
 	 * @author cjgriscom
 	 */
 	public static final class RECE232Encoder {
@@ -90,9 +90,7 @@ public final class RECE232 {
 		int sum1 = 0; // Fletcher low
 		int sum2 = 0; // Fletcher high
 		
-		private RECE232Encoder() {
-			// Stateful encoder instance
-		}
+		private RECE232Encoder() { }
 		
 		public RECE232Encoder init(byte header6Bit, int nLongwords) {
 			if (nLongwords <= 0) throw new IllegalStateException("Must encode at least one longword");
@@ -161,17 +159,44 @@ public final class RECE232 {
 	}
 	
 	/**
-	 * Stateful RxECC Decoder
+	 * Stateful RECE232 Decoder
 	 * 
 	 * @author cjgriscom
 	 *
 	 */
 	public static final class RECE232Decoder {
 		private int nLongwords;
-		int[] recon;
+		private int[] recon;
+		private boolean skipRecoveryOnCorruptedChecksum = false;
+		private boolean failOnCorruptedChecksum = false;
 		
-		public RECE232Decoder() { }
+		private RECE232Decoder() { }
 		
+		/**
+		 * By default, the decoder will attempt to detect a partially dropped or checksum and
+		 *   continue anyway if only one of the 3 bytes is invalid. 
+		 * 
+		 * @param doFail true if the decoder should fail whenever the final checksum is corrupted. False by default.
+		 * @return
+		 */
+		public RECE232Decoder setFailOnCorruptedChecksum(boolean doFail) {
+			failOnCorruptedChecksum = doFail;
+			return this;
+		}
+		
+		/**
+		 * The decoder performs error correction when the individual longword checksums don't match.
+		 * Set this parameter to true to prevent error correction attempts when the final checksum is partially missing. 
+		 * 
+		 * @param doSkip true if the decoder should not attempt bit flip recovery when final checksum is corrupted. False by default.
+		 * @return
+		 */
+		public RECE232Decoder setSkipRecoveryOnCorruptedChecksum(boolean doSkip) {
+			skipRecoveryOnCorruptedChecksum = doSkip;
+			return this;
+		}
+		
+		private static final int GOOD_MASK = 0b11111_111111_11111;
 		public boolean load(byte[] src) {
 			int len = src.length;
 			len -= 3; // Subtract fletcher footer, remainder should be n*8b
@@ -198,13 +223,16 @@ public final class RECE232 {
 			if (fF2 < 32 || fF2 >= 128) fletFErrSig |= 0x00F;
 			else if (fF2 >= 64)         fletFErrSig |= 0x001;
 			if (DEBUG) System.out.println("ErrSig: " + Integer.toHexString(fletFErrSig));
+			
+			// Don't allow partial fletF matching
+			if (fletFErrSig != 0x010 && failOnCorruptedChecksum) return false;
 
 			int fletF = 0;   // Final value if good or recoverable
 			int fletFMask = 0; // Final mask if recoverable
 			switch(fletFErrSig) {
 				case 0x010: // Good
 					fletF = ((fF2-0x20) << 11) | ((fF1-0x40) << 5) | ((fF0-0x20) << 0);
-					fletFMask = 0b11111_111111_11111;
+					fletFMask = GOOD_MASK;
 					break;
 				case 0xF10: // First is corrupt
 					fletF = ((fF2-0x20) << 11) | ((fF1-0x40) << 5);
@@ -322,7 +350,8 @@ public final class RECE232 {
 		
 		// Recursive correction
 		private boolean correctChecksums(boolean[] badChks, boolean triedNextFletCRepl, int n, int fletF, int fletFMask) {
-			if (n == badChks.length) {
+			// Base case, OR recovery is disabled w/ a partial fletF
+			if ((skipRecoveryOnCorruptedChecksum && fletFMask != GOOD_MASK) || n == badChks.length) {
 				if (DEBUG) System.out.println("Attempting fletcher full verification");
 				return verifyFletF(fletF, fletFMask);
 			} else if (badChks[n]) {
