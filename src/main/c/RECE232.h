@@ -83,24 +83,24 @@ void rece232_stream_longword(struct rece232_state *state, uint32_t longword, voi
     uint8_t xr = (b0^b1^b2^bS^b3^b4^b5) ^ 0b111111; // 6
     
     // Fletcher rounds
-    state->sum1 += rece232_crc8_lookup(b0 + 0x00); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b1 + 0x40); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b2 + 0x80); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(bS + 0xC0); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b3 + 0x00); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b4 + 0x40); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b5 + 0x80); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(xr + 0xC0); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b0 | 0x00); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b1 | 0x40); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b2 | 0x80); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(bS | 0xC0); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b3 | 0x00); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b4 | 0x40); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b5 | 0x80); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(xr | 0xC0); state->sum2 += state->sum1;
     
-    // Append to byte array
-    stream_out(b0+0x20);
-    stream_out(b1+0x40);
-    stream_out(b2+0x20);
-    stream_out(bS+0x40);
-    stream_out(b3+0x20);
-    stream_out(b4+0x40);
-    stream_out(b5+0x20);
-    stream_out(xr+0x40);
+    // Append to stream
+    stream_out(b0 | 0x20);
+    stream_out(b1 | 0x40);
+    stream_out(b2 | 0x20);
+    stream_out(bS | 0x40);
+    stream_out(b3 | 0x20);
+    stream_out(b4 | 0x40);
+    stream_out(b5 | 0x20);
+    stream_out(xr | 0x40);
     
     // Normalize fletcher
     state->sum1 = state->sum1 % 255;
@@ -112,11 +112,11 @@ void rece232_stream_longword(struct rece232_state *state, uint32_t longword, voi
 
 void rece232_finish(struct rece232_state *state, void (*stream_out)(char)) {
     uint16_t fletcher = (uint16_t)((state->sum2 << 8) | state->sum1);
-    stream_out((uint8_t)(fletcher & 0b011111)+0x20);
+    stream_out((uint8_t)(fletcher & 0b011111) | 0x20);
     fletcher >>= 5;
-    stream_out((uint8_t)(fletcher & 0b111111)+0x40);
+    stream_out((uint8_t)(fletcher & 0b111111) | 0x40);
     fletcher >>= 6;
-    stream_out((uint8_t)(fletcher & 0b011111)+0x20);
+    stream_out((uint8_t)(fletcher & 0b011111) | 0x20);
 }
 
 #endif // RECE232_h

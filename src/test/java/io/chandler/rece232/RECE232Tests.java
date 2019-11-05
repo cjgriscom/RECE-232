@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
@@ -41,6 +42,14 @@ import io.chandler.rece232.RECE232.RECE232Decoder;
 import io.chandler.rece232.RECE232.RECE232Encoder;
 
 public class RECE232Tests {
+	@Test public void testC() {
+		RECE232Decoder dec = RECE232.getDecoder().setConvertTabs(true);
+		System.out.println(dec.load("?	?	?	?@?	?r?	?M;T4".getBytes(StandardCharsets.US_ASCII)));
+		System.out.println(dec.getHeader6Bit());
+		System.out.println(dec.getLongword(0));
+		System.out.println(dec.getLongword(1));
+	}
+	
 	@Test
 	public void testOrdinaryDecode() {
 		RECE232Encoder encoder = RECE232.getEncoder();

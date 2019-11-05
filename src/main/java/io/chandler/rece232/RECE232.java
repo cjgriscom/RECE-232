@@ -115,11 +115,11 @@ public final class RECE232 {
 		
 		public byte[] finish() {
 			int fletcher = ((sum2 << 8) | sum1);
-			ascii[i++] = (byte)((fletcher & 0b011111)+0x20);
+			ascii[i++] = (byte)((fletcher & 0b011111) | 0x20);
 			fletcher >>>= 5;
-			ascii[i++] = (byte)((fletcher & 0b111111)+0x40);
+			ascii[i++] = (byte)((fletcher & 0b111111) | 0x40);
 			fletcher >>>= 6;
-			ascii[i++] = (byte)((fletcher & 0b011111)+0x20);
+			ascii[i++] = (byte)((fletcher & 0b011111) | 0x20);
 			if (nLongwords != 0) throw new IllegalStateException("Expected " + nLongwords + " more longwords");
 			if (useTabs) {
 				for (int j = 0; j < ascii.length; j++) {
@@ -140,27 +140,27 @@ public final class RECE232 {
 			int b3 = (bytes >>> 16) & 0b011111; // 5
 			int b4 = (bytes >>> 21) & 0b111111; // 6
 			int b5 = (bytes >>> 27) & 0b011111; // 5
-			int xor = (0b111111 & ~(bS^b0^b1^b2^b3^b4^b5)); // 6
+			int xor = (b0^b1^b2^bS^b3^b4^b5) ^ 0b111111; // 6
 			
 			// Fletcher rounds
-			sum1 += CRC_8_TABLE[b0 + 0x00]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b1 + 0x40]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b2 + 0x80]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[bS + 0xC0]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b3 + 0x00]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b4 + 0x40]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b5 + 0x80]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[xor+ 0xC0]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b0 | 0x00]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b1 | 0x40]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b2 | 0x80]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[bS | 0xC0]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b3 | 0x00]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b4 | 0x40]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b5 | 0x80]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[xor| 0xC0]; sum2 += sum1;
 			
 			// Append to byte array
-			ascii[i++] = (byte)(b0+0x20);
-			ascii[i++] = (byte)(b1+0x40);
-			ascii[i++] = (byte)(b2+0x20);
-			ascii[i++] = (byte)(bS+0x40);
-			ascii[i++] = (byte)(b3+0x20);
-			ascii[i++] = (byte)(b4+0x40);
-			ascii[i++] = (byte)(b5+0x20);
-			ascii[i++] = (byte)(xor+0x40);
+			ascii[i++] = (byte)(b0 | 0x20);
+			ascii[i++] = (byte)(b1 | 0x40);
+			ascii[i++] = (byte)(b2 | 0x20);
+			ascii[i++] = (byte)(bS | 0x40);
+			ascii[i++] = (byte)(b3 | 0x20);
+			ascii[i++] = (byte)(b4 | 0x40);
+			ascii[i++] = (byte)(b5 | 0x20);
+			ascii[i++] = (byte)(xor| 0x40);
 			
 			// Normalize fletcher
 			sum1 = (sum1 & 0xffff) % 255;
