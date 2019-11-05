@@ -62,8 +62,6 @@ public final class RECE232 {
 		}
 	}
 	
-	// TODO add option to replace ascii 127 with ascii 9
-	
 	private RECE232() { }
 	
 	public static RECE232Encoder getEncoder() {
@@ -389,7 +387,8 @@ public final class RECE232 {
 		private boolean correctChecksums(boolean[] badChks, boolean triedNextFletCRepl, int n, int fletF, int fletFMask) {
 			// Base case, OR recovery is disabled w/ a partial fletF
 			if ((skipRecoveryOnCorruptedChecksum && fletFMask != GOOD_MASK) || n == badChks.length) {
-				if (DEBUG) System.out.println("Attempting fletcher full verification");
+				if (DEBUG) System.out.println("Attempting full checksum verification");
+				for (boolean b : badChks) if (b) return false; // Bad checksums still exist (skip recovery must be set)
 				return verifyFletF(fletF, fletFMask);
 			} else if (badChks[n]) {
 				if (DEBUG) System.out.println("Processing bad checksum " + n);
@@ -404,12 +403,14 @@ public final class RECE232 {
 					// Try to replace byte with the rest of the checksum
 					if (DEBUG) System.out.print("NextFletC: " + recon[n*8 + 11]);
 					recon[n*8 + 11] ^= chk;
+					badChks[n+1] = false;
 					if (DEBUG) System.out.println(" -> " + recon[n*8 + 11]);
 					
 					if (correctChecksums(badChks, true, n, fletF, fletFMask)) return true;
 					
 					// Revert
 					recon[n*8 + 11] ^= chk;
+					badChks[n+1] = true;
 					if (correctChecksums(badChks, true, n, fletF, fletFMask)) return true;
 					
 					return false;
@@ -423,6 +424,7 @@ public final class RECE232 {
 						// Try to replace byte with the rest of the checksum
 						if (DEBUG) System.out.print(recon[b + n*8]);
 						recon[b + n*8] ^= chk;
+						badChks[n] = false;
 						if (DEBUG) System.out.println(" -> " + recon[b + n*8]);
 						//verifyFletF(fletF, fletFMask)
 						
@@ -442,6 +444,7 @@ public final class RECE232 {
 						}
 						// Revert
 						recon[b + n*8] ^= chk;
+						badChks[n] = true;
 					}
 					return false;
 				}
