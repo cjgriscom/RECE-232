@@ -26,6 +26,8 @@ For more information, please refer to <https://unlicense.org>
  */
 package io.chandler.rece232;
 
+import java.util.Arrays;
+
 /**
  * RECE-232 is a data encoding scheme that encodes longwords/floats to ASCII while maximizing error detection and correctability.
  * It's intended for use in ASCII RS-232 streams where bitflips and dropped characters may be common.
@@ -222,6 +224,68 @@ public final class RECE232 {
 			return this;
 		}
 		
+		private static final int INCOMPLETE = Integer.MAX_VALUE; // Magic number to signify length mismatch
+		private int calculateGaps(byte[] src, int i, int r, int n, int[] gaps, int gapCount) {
+			int longwordIndex = r / 8;
+			boolean exp5Bit = r % 2 == 0;
+			if (i >= src.length - 2) { // src.length - 2 is the first fletcher character
+				// Ran through end
+				if (DEBUG) System.out.println("Finished calculateGaps0: " + i + "," + r + ": " + gapCount);
+				return r == n ? gapCount : INCOMPLETE; // Have we finished
+			} else if (r == n) {
+				if (DEBUG) System.out.println("Finished calculateGaps1: " + i + "," + r + ": " + gapCount);
+				return i == src.length - 3 ? gapCount : INCOMPLETE; // Made it to end
+			} else {
+				
+				// Allow pushing into the first fletcher char, in case there's a gap before there
+				int byt = src[i] & 0xff;
+				if (convertTabs && byt == (byte)'\t') byt = 127;
+				
+				if (byt < 32 || byt >= 128) {
+					if (DEBUG) System.out.println(i + "," + r + " !");
+					// Out of ascii range; consider this a corrupt character
+					if (gaps[longwordIndex] != -1) return INCOMPLETE; // Already counted a gap in this longword
+					gaps[longwordIndex] = r;
+					recon[r] = 0;
+					return calculateGaps(src, i+1, r+1, n, gaps, gapCount);
+				} else if (exp5Bit && byt < 64) {
+					if (DEBUG) System.out.println(i + "," + r + " 5");
+					// Is expected 5-bit
+					recon[r] = byt - 32;
+					return calculateGaps(src, i+1, r+1, n, gaps, gapCount);
+				} else if (!exp5Bit && byt >= 64) {
+					if (DEBUG) System.out.println(i + "," + r + " 6");
+					// Is expected 6-bit
+					recon[r] = byt - 64;
+					return calculateGaps(src, i+1, r+1, n, gaps, gapCount);
+				} else {
+					if (DEBUG) System.out.println(i + "," + r + " G");
+					
+					// It's not in the expected range, could be a gap or a corrupt character
+					if (gaps[longwordIndex] != -1) return INCOMPLETE; // Already counted a gap in this longword
+
+					recon[r] = 0;
+					gaps[longwordIndex] = r;
+					
+					// Try corrupt case
+					int corruptCase = calculateGaps(src, i+1, r+1, n, gaps, gapCount);
+					
+					// Try gap case
+					gaps[longwordIndex] = r;
+					for (int l = longwordIndex + 1; l < gaps.length; l++) gaps[l] = -1; // Reset gaps
+					int gapCase = calculateGaps(src, i, r+1, n, gaps, gapCount+1);
+					
+					if (corruptCase < gapCase) { // Prefer corrupt
+						gaps[longwordIndex] = r;
+						for (int l = longwordIndex + 1; l < gaps.length; l++) gaps[l] = -1; // Reset gaps
+						return calculateGaps(src, i+1, r+1, n, gaps, gapCount); // Recalculate corrupt case (TODO better way?)
+					} else { // Prefer gap
+						return gapCase;
+					}
+				}
+			}
+		}
+		
 		private static final int GOOD_MASK = 0b11111_111111_11111;
 		public boolean load(byte[] src) {
 			
@@ -301,65 +365,13 @@ public final class RECE232 {
 			
 			this.recon = new int[nLongwords * 8];
 			int[] gaps = new int[nLongwords];
+			Arrays.fill(gaps, -1);
 			boolean[] badChks = new boolean[nLongwords];
 			
-			int i = 0;
+			if (calculateGaps(src, 0, 0, nLongwords * 8, gaps, 0) == INCOMPLETE) return false; // Recursive gaps calculation
+			
+			// Process checksums or fill gaps
 			for (int n = 0; n < nLongwords; n++) {
-				int nRead = 0;
-				int nGap = 0;
-				gaps[n] = -1;
-				// Loop through and find gaps, attempt reconstruction
-				for (; ; i++) {
-					if (i < src.length - 2) { // Allow pushing into the first fletcher char, in case there's a gap before there
-						int byt = src[i] & 0xff;
-						if (convertTabs && byt == (byte)'\t') byt = 127;
-						
-						if (byt < 32 || byt >= 128) {
-							if (DEBUG) System.out.print("!");
-							// Out of ascii range; consider this a corrupt character
-							gaps[n] = nRead;
-							nGap++;
-							if (nGap >= 2) {
-								if (DEBUG) System.out.println();
-								return false; // Too many errors
-							}
-							recon[n * 8 + nRead] = 0;
-							nRead++;
-						} else if (nRead % 2 == 0 && byt < 64) {
-							if (DEBUG) System.out.print("5");
-							// Is expected 5-bit
-							recon[n * 8 + nRead] = byt - 32;
-							nRead++;
-						} else if (nRead % 2 != 0 && byt >= 64) {
-							if (DEBUG) System.out.print("6");
-							// Is expected 6-bit
-							recon[n * 8 + nRead] = byt - 64;
-							nRead++;
-						} else {
-							if (DEBUG) System.out.print("G");
-							// It's not in the expected range, must be a gap
-							gaps[n] = nRead;
-							nGap++;
-							if (nGap >= 2) {
-								if (DEBUG) System.out.println();
-								return false; // Too many errors
-							}
-							recon[n * 8 + nRead] = 0;
-							nRead++;
-							i--; // Backtrack for next
-							
-						}
-					} else {
-						if (DEBUG) System.out.println();
-						return false; // Ran through end w/o a complete 8-charset
-					}
-					if (nRead == 8) {i++; break;}
-				}
-				if (DEBUG) System.out.println("");
-				
-				if (nRead != 8) return false; // Ran out of bytes to src
-				
-				// Fill gaps using checksum
 				int gapIdx = gaps[n];
 				if (gapIdx == -1) {
 					// No gaps; just verify checksum
@@ -369,17 +381,18 @@ public final class RECE232 {
 					}
 				} else {
 					int chk = 0;
-					for (int b = 0; b < 8; b++) {
+					for (int b = n*8; b < n*8 + 8; b++) {
 						if (b == gapIdx) continue;
 						if (DEBUG) System.out.println("Fill gap chk" + b);
-						chk ^= recon[b + n*8];
+						chk ^= recon[b];
 					}
-					recon[gapIdx + n*8] = chk ^ 0b111111;
+					recon[gapIdx] = chk ^ 0b111111;
 				}
-				
 			}
 			
-			// Attempt to correct wrong checksums
+			// Recursively attempt to correct wrong checksums
+			// TODO can improve statistical accuracy by keeping an n-bitflips score and returning the best one
+			// TODO implement a configurable limit to recursive calls
 			return correctChecksums(badChks, false, 0, fletF, fletFMask);
 		}
 		

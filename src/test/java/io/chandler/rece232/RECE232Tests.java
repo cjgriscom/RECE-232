@@ -44,7 +44,10 @@ import io.chandler.rece232.RECE232.RECE232Encoder;
 public class RECE232Tests {
 	@Test public void testC() {
 		RECE232Decoder dec = RECE232.getDecoder().setConvertTabs(true);
-		System.out.println(dec.load("?	?	?	?@?	?r?	?M;T4".getBytes(StandardCharsets.US_ASCII)));
+		// TODO "?	?	?	?@?	?r?	?M;T4" -> "?	?	?	s@?	?r?	?M;T4" fails
+		// The gap detection needs to be improved; it detects 2 gaps instead of one bit error
+		// Could perform gap detection minimizing num errors, or length matching
+		System.out.println(dec.load("?	?	?	s@?	?r?	?M;T4".getBytes(StandardCharsets.US_ASCII)));
 		System.out.println(dec.getHeader6Bit());
 		System.out.println(dec.getLongword(0));
 		System.out.println(dec.getLongword(1));
@@ -121,6 +124,7 @@ public class RECE232Tests {
 			"Pass, Flip0 1, Flip0 8, Flip0 17",
 			"Pass, Flip3 1, Flip3 8, Flip3 17",
 			"Pass, Flip2 9, Flip3 9, Flip4 9",
+			"Pass, Flip6 6", // This case should only work with the recursive gap computation
 		};
 		
 		for (int[] dataset : datasets) { for (String corr : corruptionTests) {
