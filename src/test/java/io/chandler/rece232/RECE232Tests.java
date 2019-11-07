@@ -44,10 +44,7 @@ import io.chandler.rece232.RECE232.RECE232Encoder;
 public class RECE232Tests {
 	@Test public void testC() {
 		RECE232Decoder dec = RECE232.getDecoder().setConvertTabs(true);
-		// TODO "?	?	?	?@?	?r?	?M;T4" -> "?	?	?	s@?	?r?	?M;T4" fails
-		// The gap detection needs to be improved; it detects 2 gaps instead of one bit error
-		// Could perform gap detection minimizing num errors, or length matching
-		System.out.println(dec.load("?	?	?	s@?	?r?	?M;T4".getBytes(StandardCharsets.US_ASCII)));
+		assertTrue(dec.load("?	?	?	?@?	?r?	?M?V4".getBytes(StandardCharsets.US_ASCII)));
 		System.out.println(dec.getHeader6Bit());
 		System.out.println(dec.getLongword(0));
 		System.out.println(dec.getLongword(1));

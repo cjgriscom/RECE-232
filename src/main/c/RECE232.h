@@ -72,10 +72,10 @@ struct rece232_state {
 };
 
 void rece232_init(struct rece232_state *state, uint8_t header_6b) {
-    state->sum1 = 0;
-    state->sum2 = 0;
-    
     state->cur_spacer = header_6b & 0b111111; // First 6-bit spacer is the header
+
+    state->sum1 = rece232_crc8_lookup(state->cur_spacer | 0x40);
+    state->sum2 = rece232_crc8_lookup(state->cur_spacer | 0xC0);
 }
 
 void rece232_stream_longword(struct rece232_state *state, uint32_t longword, void (*stream_out)(char)) {
@@ -90,14 +90,12 @@ void rece232_stream_longword(struct rece232_state *state, uint32_t longword, voi
     uint8_t xr = (b0^b1^b2^bS^b3^b4^b5) ^ 0b111111; // 6
     
     // Fletcher rounds
-    state->sum1 += rece232_crc8_lookup(b0 | 0x00); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b1 | 0x40); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b2 | 0x80); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(bS | 0xC0); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b3 | 0x00); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b4 | 0x40); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(b5 | 0x80); state->sum2 += state->sum1;
-    state->sum1 += rece232_crc8_lookup(xr | 0xC0); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b0 | 0x60); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b1 | 0x00); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b2 | 0x40); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b3 | 0xC0); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b4 | 0x80); state->sum2 += state->sum1;
+    state->sum1 += rece232_crc8_lookup(b5 | 0xE0); state->sum2 += state->sum1;
     
     // Append to stream
     stream_out(b0 | 0x20);

@@ -107,11 +107,11 @@ public final class RECE232 {
 		public RECE232Encoder init(byte header6Bit, int nLongwords) {
 			if (nLongwords <= 0) throw new IllegalStateException("Must encode at least one longword");
 			this.i = 0;
-			this.sum1 = 0;
-			this.sum2 = 0;
 			this.nLongwords = nLongwords;
 			this.ascii = new byte[8*nLongwords + 3]; // ~, message/spacers, fletcher
 			this.curSpacer = (byte)(header6Bit & 0b111111); // First 6-bit spacer is the header
+			this.sum1 = CRC_8_TABLE[curSpacer + 0x40];
+			this.sum2 = CRC_8_TABLE[curSpacer + 0xC0];
 			return this;
 		}
 		
@@ -145,14 +145,12 @@ public final class RECE232 {
 			int xor = (b0^b1^b2^bS^b3^b4^b5) ^ 0b111111; // 6
 			
 			// Fletcher rounds
-			sum1 += CRC_8_TABLE[b0 | 0x00]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b1 | 0x40]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b2 | 0x80]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[bS | 0xC0]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b3 | 0x00]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b4 | 0x40]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b5 | 0x80]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[xor| 0xC0]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b0 | 0x60]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b1 | 0x00]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b2 | 0x40]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b3 | 0xC0]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b4 | 0x80]; sum2 += sum1;
+			sum1 += CRC_8_TABLE[b5 | 0xE0]; sum2 += sum1;
 			
 			// Append to byte array
 			ascii[i++] = (byte)(b0 | 0x20);
@@ -474,14 +472,21 @@ public final class RECE232 {
 		private boolean verifyFletF(int fletF, int fletFMask) {
 			if (DEBUG) System.out.println("MaskF " + Integer.toHexString(0xffff & fletFMask));
 			if (DEBUG) System.out.println("ReadF " + Integer.toHexString(0xffff & fletF));
-			int sum1 = 0;
-			int sum2 = 0;
+			int sum1 = CRC_8_TABLE[recon[3] + 0x40];
+			int sum2 = CRC_8_TABLE[recon[3] + 0xC0];
 			for (int r = 0; r < recon.length; ++r) {
-				sum1 = ((sum1 + (CRC_8_TABLE[recon[r] + ((0b11 & r) << 6)])) & 0xffff) % 255;
-				sum2 = ((sum2 + sum1) & 0xffff) % 255;
-				if (r % 8 == 7 && r+5 < recon.length) {
-					if ((sum2 & 0b111111) != recon[r + 4]) return false;
+				switch (r % 8) {
+					case 0: sum1 += CRC_8_TABLE[recon[r] + 0x60]; break;
+					case 1: sum1 += CRC_8_TABLE[recon[r] + 0x00]; break;
+					case 2: sum1 += CRC_8_TABLE[recon[r] + 0x40]; break;
+					case 3: continue;
+					case 4: sum1 += CRC_8_TABLE[recon[r] + 0xC0]; break;
+					case 5: sum1 += CRC_8_TABLE[recon[r] + 0x80]; break;
+					case 6: sum1 = ((sum1 + (CRC_8_TABLE[(recon[r] + 0xE0) & 0xFF])) & 0xffff) % 255; break;
+					case 7: if (r+5 < recon.length && (sum2 & 0b111111) != recon[r + 4]) return false;
+						continue;
 				}
+				sum2 = ((sum2 + sum1) & 0xffff) % 255;
 			}
 			int extFletcher = (sum2 << 8) | sum1;
 			if (DEBUG) System.out.println("MskdC " + Integer.toHexString(extFletcher & fletFMask));
@@ -499,10 +504,19 @@ public final class RECE232 {
 		}
 		
 		private int calReconFletC(int len) {
-			int sum1 = 0;
-			int sum2 = 0;
+			int sum1 = CRC_8_TABLE[recon[3] + 0x40];
+			int sum2 = CRC_8_TABLE[recon[3] + 0xC0];
 			for (int r = 0; r < len; ++r) {
-				sum1 = ((sum1 + (CRC_8_TABLE[recon[r] + ((0b11 & r) << 6)])) & 0xffff) % 255;
+				switch (r % 8) {
+					case 0: sum1 += CRC_8_TABLE[recon[r] + 0x60]; break;
+					case 1: sum1 += CRC_8_TABLE[recon[r] + 0x00]; break;
+					case 2: sum1 += CRC_8_TABLE[recon[r] + 0x40]; break;
+					case 3: continue;
+					case 4: sum1 += CRC_8_TABLE[recon[r] + 0xC0]; break;
+					case 5: sum1 += CRC_8_TABLE[recon[r] + 0x80]; break;
+					case 6: sum1 = ((sum1 + (CRC_8_TABLE[(recon[r] + 0xE0) & 0xFF])) & 0xffff) % 255; break;
+					case 7: continue;
+				}
 				sum2 = ((sum2 + sum1) & 0xffff) % 255;
 			}
 			return (sum2 & 0b111111);
