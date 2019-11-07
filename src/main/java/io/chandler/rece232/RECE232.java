@@ -42,26 +42,20 @@ import java.util.Arrays;
 public final class RECE232 {
 	private static final boolean DEBUG = false;
 	
-	private static final int[] CRC_8_TABLE = new int[256];
+	static int CRC_INIT = 0x1af7;
+	static int crc16dnp_bit_4(int crc, int lw) {
+		crc ^= lw;
+		for (int k = 0; k < 32; k++) crc = (crc & 1) != 0 ? (crc >>> 1) ^ 0xa6bc : crc >>> 1;
+		return crc;
+	}
+	static int crc16dnp_bit_1(int crc, int byt) {
+		crc ^= byt & 0xff;
+		for (int k = 0; k < 8; k++) crc = (crc & 1) != 0 ? (crc >>> 1) ^ 0xa6bc : crc >>> 1;
+		return crc;
+	}
 	
-	// DOW CRC
-	private static final short CRC8_POLYNOMIAL = (short)Integer.parseInt(new StringBuilder(
-							Integer.toBinaryString(0x131)).reverse().toString(), 2); //0b100011001 or 0x131;
-	
-	// Calculate lookup table
-	static {
-		for (int i = 0; i < 256; i++) {
-			int rem = i;
-			for (int j = 0; j < 8; j++) {
-				if ((rem & 1) == 1) rem = ((rem ^ CRC8_POLYNOMIAL) >> 1);
-				else rem >>= 1;
-			}
-			CRC_8_TABLE[i] = rem;
-			/*
-			System.out.printf("%3d,", CRC_8_TABLE[i] ); // Print out table
-			if ((i+1)%16 == 0) System.out.println();
-			*/
-		}
+	static byte partialCRC(int crc) {
+		return (byte) (((crc >>> 0) & 0b000011) | ((crc >>> 5) & 0b001100) | ((crc >>> 10) & 0b110000));
 	}
 	
 	private RECE232() { }
@@ -89,8 +83,7 @@ public final class RECE232 {
 		
 		private byte curSpacer;
 
-		int sum1 = 0; // Fletcher low
-		int sum2 = 0; // Fletcher high
+		int chk = 0; // CRC-16
 		
 		private RECE232Encoder() { }
 		
@@ -110,18 +103,16 @@ public final class RECE232 {
 			this.nLongwords = nLongwords;
 			this.ascii = new byte[8*nLongwords + 3]; // ~, message/spacers, fletcher
 			this.curSpacer = (byte)(header6Bit & 0b111111); // First 6-bit spacer is the header
-			this.sum1 = CRC_8_TABLE[curSpacer + 0x40];
-			this.sum2 = CRC_8_TABLE[curSpacer + 0xC0];
+			this.chk = crc16dnp_bit_1(CRC_INIT, curSpacer);
 			return this;
 		}
 		
 		public byte[] finish() {
-			int fletcher = ((sum2 << 8) | sum1);
-			ascii[i++] = (byte)((fletcher & 0b011111) | 0x20);
-			fletcher >>>= 5;
-			ascii[i++] = (byte)((fletcher & 0b111111) | 0x40);
-			fletcher >>>= 6;
-			ascii[i++] = (byte)((fletcher & 0b011111) | 0x20);
+			ascii[i++] = (byte)((chk & 0b011111) | 0x20);
+			chk >>>= 5;
+			ascii[i++] = (byte)((chk & 0b111111) | 0x40);
+			chk >>>= 6;
+			ascii[i++] = (byte)((chk & 0b011111) | 0x20);
 			if (nLongwords != 0) throw new IllegalStateException("Expected " + nLongwords + " more longwords");
 			if (useTabs) {
 				for (int j = 0; j < ascii.length; j++) {
@@ -144,14 +135,6 @@ public final class RECE232 {
 			int b5 = (bytes >>> 27) & 0b011111; // 5
 			int xor = (b0^b1^b2^bS^b3^b4^b5) ^ 0b111111; // 6
 			
-			// Fletcher rounds
-			sum1 += CRC_8_TABLE[b0 | 0x60]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b1 | 0x00]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b2 | 0x40]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b3 | 0xC0]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b4 | 0x80]; sum2 += sum1;
-			sum1 += CRC_8_TABLE[b5 | 0xE0]; sum2 += sum1;
-			
 			// Append to byte array
 			ascii[i++] = (byte)(b0 | 0x20);
 			ascii[i++] = (byte)(b1 | 0x40);
@@ -162,12 +145,10 @@ public final class RECE232 {
 			ascii[i++] = (byte)(b5 | 0x20);
 			ascii[i++] = (byte)(xor| 0x40);
 			
-			// Normalize fletcher
-			sum1 = (sum1 & 0xffff) % 255;
-			sum2 = (sum2 & 0xffff) % 255;
+			chk = crc16dnp_bit_4(chk, bytes);
 			
 			// Set current spacer to abbreviated fletcher
-			curSpacer = (byte)(sum2 & 0b111111);
+			curSpacer = partialCRC(chk);
 			
 			return this;
 		}
@@ -472,26 +453,15 @@ public final class RECE232 {
 		private boolean verifyFletF(int fletF, int fletFMask) {
 			if (DEBUG) System.out.println("MaskF " + Integer.toHexString(0xffff & fletFMask));
 			if (DEBUG) System.out.println("ReadF " + Integer.toHexString(0xffff & fletF));
-			int sum1 = CRC_8_TABLE[recon[3] + 0x40];
-			int sum2 = CRC_8_TABLE[recon[3] + 0xC0];
-			for (int r = 0; r < recon.length; ++r) {
-				switch (r % 8) {
-					case 0: sum1 += CRC_8_TABLE[recon[r] + 0x60]; break;
-					case 1: sum1 += CRC_8_TABLE[recon[r] + 0x00]; break;
-					case 2: sum1 += CRC_8_TABLE[recon[r] + 0x40]; break;
-					case 3: continue;
-					case 4: sum1 += CRC_8_TABLE[recon[r] + 0xC0]; break;
-					case 5: sum1 += CRC_8_TABLE[recon[r] + 0x80]; break;
-					case 6: sum1 = ((sum1 + (CRC_8_TABLE[(recon[r] + 0xE0) & 0xFF])) & 0xffff) % 255; break;
-					case 7: if (r+5 < recon.length && (sum2 & 0b111111) != recon[r + 4]) return false;
-						continue;
-				}
-				sum2 = ((sum2 + sum1) & 0xffff) % 255;
+			int chk = crc16dnp_bit_1(CRC_INIT, recon[3]);
+			for (int r = 0; r < recon.length; r += 8) {
+				int lw = getLongword(r/8);
+				chk = crc16dnp_bit_4(chk, lw);
+				if (r + 11 < recon.length && partialCRC(chk) != recon[r + 11]) return false;
 			}
-			int extFletcher = (sum2 << 8) | sum1;
-			if (DEBUG) System.out.println("MskdC " + Integer.toHexString(extFletcher & fletFMask));
-			if (DEBUG) System.out.println("OrigC " + Integer.toHexString(extFletcher));
-			return (extFletcher & fletFMask) == (fletF & 0xffff);
+			if (DEBUG) System.out.println("MskdC " + Integer.toHexString(chk & fletFMask));
+			if (DEBUG) System.out.println("OrigC " + Integer.toHexString(chk));
+			return (chk & fletFMask) == (fletF & 0xffff);
 			
 		}
 		
@@ -504,22 +474,12 @@ public final class RECE232 {
 		}
 		
 		private int calReconFletC(int len) {
-			int sum1 = CRC_8_TABLE[recon[3] + 0x40];
-			int sum2 = CRC_8_TABLE[recon[3] + 0xC0];
-			for (int r = 0; r < len; ++r) {
-				switch (r % 8) {
-					case 0: sum1 += CRC_8_TABLE[recon[r] + 0x60]; break;
-					case 1: sum1 += CRC_8_TABLE[recon[r] + 0x00]; break;
-					case 2: sum1 += CRC_8_TABLE[recon[r] + 0x40]; break;
-					case 3: continue;
-					case 4: sum1 += CRC_8_TABLE[recon[r] + 0xC0]; break;
-					case 5: sum1 += CRC_8_TABLE[recon[r] + 0x80]; break;
-					case 6: sum1 = ((sum1 + (CRC_8_TABLE[(recon[r] + 0xE0) & 0xFF])) & 0xffff) % 255; break;
-					case 7: continue;
-				}
-				sum2 = ((sum2 + sum1) & 0xffff) % 255;
+			int chk = crc16dnp_bit_1(CRC_INIT, recon[3]);
+			for (int r = 0; r < len; r += 8) {
+				int lw = getLongword(r/8);
+				chk = crc16dnp_bit_4(chk, lw);
 			}
-			return (sum2 & 0b111111);
+			return partialCRC(chk);
 		}
 		
 		public int nLongwords() {

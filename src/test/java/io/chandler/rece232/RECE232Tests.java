@@ -44,10 +44,13 @@ import io.chandler.rece232.RECE232.RECE232Encoder;
 public class RECE232Tests {
 	@Test public void testC() {
 		RECE232Decoder dec = RECE232.getDecoder().setConvertTabs(true);
-		assertTrue(dec.load("?	?	?	?@?	?r?	?M?V4".getBytes(StandardCharsets.US_ASCII)));
-		System.out.println(dec.getHeader6Bit());
-		System.out.println(dec.getLongword(0));
-		System.out.println(dec.getLongword(1));
+		assertTrue(dec.load("?	?	?	?@?	?J?	?u*J ".getBytes(StandardCharsets.US_ASCII)));
+		assertEquals(0x3f, dec.getHeader6Bit());
+		assertEquals(-1, dec.getLongword(0));
+		assertEquals(-1, dec.getLongword(1));
+		assertTrue(dec.load(" @ @ @ \t2E2".getBytes(StandardCharsets.US_ASCII)));
+		assertEquals(0, dec.getHeader6Bit());
+		assertEquals(0, dec.getLongword(0));
 	}
 	
 	@Test

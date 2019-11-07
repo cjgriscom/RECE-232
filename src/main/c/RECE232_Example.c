@@ -35,10 +35,15 @@ void stream(char byt) {
 int main() {
     
     struct rece232_state state;
+    
     rece232_init(&state, 0x3f);
     rece232_stream_longword(&state, 0xffffffff, stream);
     rece232_stream_longword(&state, 0xffffffff, stream);
     rece232_finish(&state, stream);
     printf("\n");
     
+    rece232_init(&state, 0);
+    rece232_stream_longword(&state, 0, stream);
+    rece232_finish(&state, stream);
+    printf("\n");
 }
