@@ -226,63 +226,67 @@ public final class RECE232 {
 		
 		private static final int INCOMPLETE = Integer.MAX_VALUE; // Magic number to signify length mismatch
 		private int calculateGaps(byte[] src, int i, int r, int n, int[] gaps, int gapCount) {
-			int longwordIndex = r / 8;
-			boolean exp5Bit = r % 2 == 0;
-			if (i >= src.length - 2) { // src.length - 2 is the first fletcher character
-				// Ran through end
-				if (DEBUG) System.out.println("Finished calculateGaps0: " + i + "," + r + ": " + gapCount);
-				return r == n ? gapCount : INCOMPLETE; // Have we finished
-			} else if (r == n) {
-				if (DEBUG) System.out.println("Finished calculateGaps1: " + i + "," + r + ": " + gapCount);
-				return i == src.length - 3 ? gapCount : INCOMPLETE; // Made it to end
-			} else {
-				
-				// Allow pushing into the first fletcher char, in case there's a gap before there
-				int byt = src[i] & 0xff;
-				if (convertTabs && byt == (byte)'\t') byt = 127;
-				
-				if (byt < 32 || byt >= 128) {
-					if (DEBUG) System.out.println(i + "," + r + " !");
-					// Out of ascii range; consider this a corrupt character
-					if (gaps[longwordIndex] != -1) return INCOMPLETE; // Already counted a gap in this longword
-					gaps[longwordIndex] = r;
-					recon[r] = 0;
-					return calculateGaps(src, i+1, r+1, n, gaps, gapCount);
-				} else if (exp5Bit && byt < 64) {
-					if (DEBUG) System.out.println(i + "," + r + " 5");
-					// Is expected 5-bit
-					recon[r] = byt - 32;
-					return calculateGaps(src, i+1, r+1, n, gaps, gapCount);
-				} else if (!exp5Bit && byt >= 64) {
-					if (DEBUG) System.out.println(i + "," + r + " 6");
-					// Is expected 6-bit
-					recon[r] = byt - 64;
-					return calculateGaps(src, i+1, r+1, n, gaps, gapCount);
+			nextByte: for (;; i++, r++) {
+				int longwordIndex = r / 8;
+				boolean exp5Bit = r % 2 == 0;
+				if (i >= src.length - 2) { // src.length - 2 is the first fletcher character
+					// Ran through end
+					if (DEBUG) System.out.println("Finished calculateGaps0: " + i + "," + r + ": " + gapCount);
+					return r == n ? gapCount : INCOMPLETE; // Have we finished
+				} else if (r == n) {
+					if (DEBUG) System.out.println("Finished calculateGaps1: " + i + "," + r + ": " + gapCount);
+					return i == src.length - 3 ? gapCount : INCOMPLETE; // Made it to end
 				} else {
-					if (DEBUG) System.out.println(i + "," + r + " G");
+					// Allow pushing into the first fletcher char, in case there's a gap before there
+					int byt = src[i] & 0xff;
+					if (convertTabs && byt == (byte)'\t') byt = 127;
 					
-					// It's not in the expected range, could be a gap or a corrupt character
-					if (gaps[longwordIndex] != -1) return INCOMPLETE; // Already counted a gap in this longword
-
-					recon[r] = 0;
-					gaps[longwordIndex] = r;
-					
-					// Try corrupt case
-					int corruptCase = calculateGaps(src, i+1, r+1, n, gaps, gapCount);
-					
-					// Try gap case
-					gaps[longwordIndex] = r;
-					for (int l = longwordIndex + 1; l < gaps.length; l++) gaps[l] = -1; // Reset gaps
-					int gapCase = calculateGaps(src, i, r+1, n, gaps, gapCount+1);
-					
-					if (corruptCase < gapCase) { // Prefer corrupt
+					if (byt < 32 || byt >= 128) {
+						if (DEBUG) System.out.println(i + "," + r + " !");
+						// Out of ascii range; consider this a corrupt character
+						if (gaps[longwordIndex] != -1) return INCOMPLETE; // Already counted a gap in this longword
 						gaps[longwordIndex] = r;
-						for (int l = longwordIndex + 1; l < gaps.length; l++) gaps[l] = -1; // Reset gaps
-						return calculateGaps(src, i+1, r+1, n, gaps, gapCount); // Recalculate corrupt case (TODO better way?)
-					} else { // Prefer gap
-						return gapCase;
+						recon[r] = 0;
+						continue nextByte; // Unconditionally continue to next byte
+					} else if (exp5Bit && byt < 64) {
+						if (DEBUG) System.out.println(i + "," + r + " 5");
+						// Is expected 5-bit
+						recon[r] = byt - 32;
+						continue nextByte; // Unconditionally continue to next byte
+					} else if (!exp5Bit && byt >= 64) {
+						if (DEBUG) System.out.println(i + "," + r + " 6");
+						// Is expected 6-bit
+						recon[r] = byt - 64;
+						continue nextByte; // Unconditionally continue to next byte
+					} else {
+						if (DEBUG) System.out.println(i + "," + r + " G");
+						
+						// It's not in the expected range, could be a gap or a corrupt character
+						if (gaps[longwordIndex] != -1) return INCOMPLETE; // Already counted a gap in this longword
+						
+						recon[r] = 0; // Set gap
+						gaps[longwordIndex] = r; // Mark index of gap
+						
+						// Try corrupt case
+						int corruptCase = calculateGaps(src, i+1, r+1, n, gaps, gapCount); // Recursive branch
+						if (corruptCase == 0) return corruptCase; // This is best case for sure; just return
+						
+						// Try gap case
+						for (int l = longwordIndex + 1; l < gaps.length; l++) gaps[l] = -1; // Reset following gaps
+						int gapCase = calculateGaps(src, i, r+1, n, gaps, gapCount+1); // Recursive branch
+						
+						// Compare penalties of each case
+						if (corruptCase < gapCase) { // Prefer corrupt
+							for (int l = longwordIndex + 1; l < gaps.length; l++) gaps[l] = -1; // Reset following gaps
+							// Recalculate corrupt case (TODO better way?)
+							continue nextByte; // Unconditionally continue to next byte
+						} else { // Prefer gap
+							// recon & gaps currently contain the result of gap case, so just return
+							return gapCase;
+						}
 					}
 				}
+				//break; // Shall never drop through
 			}
 		}
 		
