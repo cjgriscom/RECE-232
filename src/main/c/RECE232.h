@@ -26,7 +26,7 @@ For more information, please refer to <https://unlicense.org>
  */
 
 // RECE-232 C Header
-// Protocol Version 0.1.x
+// Protocol Version 0.2.x
 // 
 // Author: cjgriscom
 // Repository: https://github.com/cjgriscom/RECE-232
