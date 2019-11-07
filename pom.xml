@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>io.chandler</groupId>
 	<artifactId>RECE-232</artifactId>
-	<version>0.1.1-SNAPSHOT</version>
+	<version>0.1.1</version>
 	<name>RECE-232</name>
 	<url>https://github.com/cjgriscom/RECE-232</url>
 	<inceptionYear>2019</inceptionYear>

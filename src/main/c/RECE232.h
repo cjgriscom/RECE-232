@@ -24,6 +24,13 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <https://unlicense.org>
  */
+
+// RECE-232 C Header
+// Protocol Version 0.1.x
+// 
+// Author: cjgriscom
+// Repository: https://github.com/cjgriscom/RECE-232
+
 #ifndef RECE232_h
 #define RECE232_h
 
