@@ -40,7 +40,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.IntStream;
 
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import io.chandler.rece232.RECE232.RECE232Decoder;
 import io.chandler.rece232.RECE232.RECE232Encoder;
@@ -51,6 +52,7 @@ import io.chandler.rece232.RECE232.RECE232Encoder;
  *
  */
 public class RECE232Benchmarks {
+	private static final boolean CHECK_UNMODIFIED = false;
 	
 	// Class to run benchmark thread and store result
 	static class Benchmarker {
@@ -59,7 +61,7 @@ public class RECE232Benchmarks {
 		private final RECE232Encoder encoder = RECE232.getEncoder();
 		private final RECE232Decoder decoder = RECE232.getDecoder();
 
-		private final int maxIntsInMessage;
+		private final int minIntsInMessage, maxIntsInMessage;
 		private final int totalMsgs;
 		private final double probBitFlip;     // Computed for each bit
 		private final double probDroppedByte; // Computed for each byte
@@ -75,8 +77,9 @@ public class RECE232Benchmarks {
 		
 		public double avgMsgLength = 0;
 		
-		public Benchmarker(int maxIntsInMessage, int totalMsgs, double probBitFlip, double probDroppedByte,
+		public Benchmarker(int minIntsInMessage, int maxIntsInMessage, int totalMsgs, double probBitFlip, double probDroppedByte,
 				Random rand, boolean skipRecoveryOnCorruptedChecksum, boolean failCorruptedChecksum) {
+			this.minIntsInMessage = minIntsInMessage;
 			this.maxIntsInMessage = maxIntsInMessage;
 			this.totalMsgs = totalMsgs;
 			this.probBitFlip = probBitFlip;
@@ -94,7 +97,7 @@ public class RECE232Benchmarks {
 			
 			for (int i = 0; i < totalMsgs; i++) {
 				int code = rand.nextInt(64); // Message code from 0-63
-				int n = rand.nextInt(maxIntsInMessage) + 1; // 1-maxIntsInMessage encoded values
+				int n = rand.nextInt(maxIntsInMessage + 1 - minIntsInMessage) + minIntsInMessage;
 				encoder.init((byte)code, n);
 				for (int j = 0; j < n; j++) {
 					int v = rand.nextInt();
@@ -127,23 +130,29 @@ public class RECE232Benchmarks {
 					}
 				}
 				
+				boolean loaded, correct;
+				
 				byte[] result_mod = result;
-				if (modified) {
-					modifiedMessageCount++;
-					result_mod = errEncoder.toByteArray();
-				}
-				
-				boolean loaded = decoder.load(result_mod);
-				boolean correct = true;
-				
-				if (loaded) {
-					correct = decoder.getHeader6Bit() == code;
-					if (decoder.nLongwords() != n) correct = false;
-					else {
-						for (int j = 0; j < n; j++) {
-							if (decoder.getLongword(j) != buffer[j]) correct = false;
+				if (modified || CHECK_UNMODIFIED) {
+					if (modified) {
+						modifiedMessageCount++;
+						result_mod = errEncoder.toByteArray();
+					}
+					
+					loaded = decoder.load(result_mod);
+					correct = true;
+					
+					if (loaded) {
+						correct = decoder.getHeader6Bit() == code;
+						if (decoder.nLongwords() != n) correct = false;
+						else {
+							for (int j = 0; j < n; j++) {
+								if (decoder.getLongword(j) != buffer[j]) correct = false;
+							}
 						}
 					}
+				} else {
+					loaded = true; correct = true;
 				}
 				
 				if (loaded && correct && modified) {
@@ -165,20 +174,41 @@ public class RECE232Benchmarks {
 		
 	}
 	
-	
-	@Test
-	public void testErrorRates() throws InterruptedException, ExecutionException {
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"1-7, 0.1%, 0.25%, skipifnochk", "1-7, 0.1%, 0.25%",
+			
+			"1-1, 0.1%, 0%,    skipifnochk", "1-1, 0.1%, 0%",
+			"2-2, 0.1%, 0%,    skipifnochk", "2-2, 0.1%, 0%",
+			"4-4, 0.1%, 0%,    skipifnochk", "4-4, 0.1%, 0%",
+			"6-6, 0.1%, 0%,    skipifnochk", "6-6, 0.1%, 0%",
+			"1-1, 0.1%, 0.25%, skipifnochk", "1-1, 0.1%, 0.25%",
+			"2-2, 0.1%, 0.25%, skipifnochk", "2-2, 0.1%, 0.25%",
+			"4-4, 0.1%, 0.25%, skipifnochk", "4-4, 0.1%, 0.25%",
+			"6-6, 0.1%, 0.25%, skipifnochk", "6-6, 0.1%, 0.25%",
+			"1-1, 0.2%, 0.5%,  skipifnochk", "1-1, 0.2%, 0.5%",
+			"2-2, 0.2%, 0.5%,  skipifnochk", "2-2, 0.2%, 0.5%",
+			"4-4, 0.2%, 0.5%,  skipifnochk", "4-4, 0.2%, 0.5%",
+			"6-6, 0.2%, 0.5%,  skipifnochk", "6-6, 0.2%, 0.5%",
+			"1-1, 0.4%, 1%,    skipifnochk", "1-1, 0.4%, 1%",
+			"2-2, 0.4%, 1%,    skipifnochk", "2-2, 0.4%, 1%",
+			"4-4, 0.4%, 1%,    skipifnochk", "4-4, 0.4%, 1%",
+			"6-6, 0.4%, 1%,    skipifnochk", "6-6, 0.4%, 1%",
+			})
+	public void testErrorRates(String param) throws InterruptedException, ExecutionException {
+		final String[] spl = param.split("[, \\-\\%]+");
 		
 		/* Test Variables */
-		final int RUN_TOTAL_MSGS = 10_000_000;
+		final int RUN_TOTAL_MSGS = 100_000_000;
 		final int INSTANCES = 8;
 		final int THREADS   = 8;
 		
-		double probBitFlip     = 0.002; // Computed for each bit
-		double probDroppedByte = 0.005; // Computed for each byte
-		int maxIntsInMessage = 7;
+		double probBitFlip     = Double.parseDouble(spl[2]) / 100.; // Computed for each bit
+		double probDroppedByte = Double.parseDouble(spl[3]) / 100.; // Computed for each byte
+		int minIntsInMessage =   Integer.parseInt  (spl[0]);
+		int maxIntsInMessage =   Integer.parseInt  (spl[1]);
 		
-		boolean skipRecoveryOnCorruptedChecksum = false,
+		boolean skipRecoveryOnCorruptedChecksum = param.contains("skipifnochk"),
 				failCorruptedChecksum = false;
 		/******************/
 		
@@ -205,11 +235,11 @@ public class RECE232Benchmarks {
 			callables.add(() -> {
 				Random rand = new Random(seedGen.nextLong());
 				Benchmarker bch = new Benchmarker(
-						maxIntsInMessage, msgsForEachInstance, probBitFlip, probDroppedByte,
+						minIntsInMessage, maxIntsInMessage, msgsForEachInstance, probBitFlip, probDroppedByte,
 						rand,
 						skipRecoveryOnCorruptedChecksum, failCorruptedChecksum);
 				bch.run();
-				System.out.println("Completed benchmark " + i);
+				//System.out.println("Completed benchmark " + i);
 				return bch;
 			});
 		});
@@ -226,23 +256,23 @@ public class RECE232Benchmarks {
 			avgMsgLength += bch.avgMsgLength / INSTANCES;
 		}
 		
-		String intfrm = "%"+(totalMsgs + "").length()+"d / " + totalMsgs + " (%.4f%%)\n";
-		System.out.println("RECE-232 Test Summary:");
+		String intfrm = "%"+(totalMsgs + "").length()+"d / " + totalMsgs + " (%.5f%%)\n";
+		System.out.println("RECE-232 Test Summary: " + param);
 		System.out.println();
-		System.out.println("  Bit flip probability:     " + probBitFlip);
-		System.out.println("  Dropped byte probability: " + probDroppedByte);
-		System.out.println();
+		//System.out.println("  Bit flip probability:     " + probBitFlip);
+		//System.out.println("  Dropped byte probability: " + probDroppedByte);
+		//System.out.println();
 		System.out.printf ("  Messages with generated errors: " + intfrm, modifiedMessageCount, 100. * modifiedMessageCount / totalMsgs);
 		System.out.printf ("  Average message length: %.2f bytes\n", avgMsgLength);
 		int et = modifiedMessageCount;
-		String intfrm_e = "%"+(et + "").length()+"d / " + et + " (%.4f%%)\n";
+		String intfrm_e = "%"+(et + "").length()+"d / " + et + " (%.5f%%)\n";
 		System.out.println();
 		System.out.println("  Flipped bits:  " + bitFlipCount);
 		System.out.println("  Dropped bytes: " + droppedByteCount);
 		System.out.println();
-		System.out.printf ("  Recovered messages: " + intfrm_e, recoveredCount, 100. * recoveredCount / et);
-		System.out.printf ("  Lost messages:      " + intfrm_e, unrecoverableCount, 100. * unrecoverableCount / et);
-		System.out.printf ("  Corrupted messages: " + intfrm_e, wrongCount, 100. * wrongCount / et);
+		System.out.printf ("  Recovered errors:     " + intfrm_e, recoveredCount, 100. * recoveredCount / et);
+		System.out.printf ("  Unrecoverable errors: " + intfrm_e, unrecoverableCount, 100. * unrecoverableCount / et);
+		System.out.printf ("  Undetected errors:    " + intfrm_e, wrongCount, 100. * wrongCount / et);
 		
 		System.out.println();
 		for (Entry<String, String> corrupted : Benchmarker.corruptedList.entrySet()) {

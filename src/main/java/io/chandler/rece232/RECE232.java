@@ -34,7 +34,7 @@ import java.util.Arrays;
  * 
  * Guarantees:
  *   Will recover from any dropped character
- *   Will recover from any corrupted byte (except possibly in the 1-byte header and the 3-byte footer)
+ *   Will recover from any corrupted byte (except possibly in the 3-byte footer)
  * 
  * @author cjgriscom
  *
