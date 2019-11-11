@@ -86,7 +86,7 @@ public class RECE232Tests {
 	@Test
 	public void testErrors() {
 		RECE232Encoder encoder = RECE232.getEncoder();
-		RECE232Decoder dec = RECE232.getDecoder();
+		RECE232Decoder dec = RECE232.getDecoder().setSkipRecoveryOnCorruptedChecksum(false); // Aggressive recovery
 		
 		int[][] datasets = new int[][] {
 			{0x3F, 1243546544, 121, 145687},

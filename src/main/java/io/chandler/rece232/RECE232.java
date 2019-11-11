@@ -163,7 +163,7 @@ public final class RECE232 {
 	public static final class RECE232Decoder {
 		private int nLongwords;
 		private int[] recon;
-		private boolean skipRecoveryOnCorruptedChecksum = false;
+		private boolean skipRecoveryOnCorruptedChecksum = true;
 		private boolean failOnCorruptedChecksum = false;
 		private boolean convertTabs = false;
 		
@@ -185,7 +185,7 @@ public final class RECE232 {
 		 * The decoder performs error correction when the individual longword checksums don't match.
 		 * Set this parameter to true to prevent error correction attempts when the final checksum is partially missing. 
 		 * 
-		 * @param doSkip true if the decoder should not attempt bit flip recovery when final checksum is corrupted. False by default.
+		 * @param doSkip true if the decoder should not attempt bit flip recovery when final checksum is corrupted. True by default.
 		 * @return
 		 */
 		public RECE232Decoder setSkipRecoveryOnCorruptedChecksum(boolean doSkip) {
