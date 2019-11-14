@@ -12,9 +12,9 @@ A message contains a 6-bit header followed by one or more longwords (i.e. uint32
 ### Example Encoder Output
 | Header | Longword 0 | Longword 1 | Longword 2 |  Length  |         Message Output         |
 |------- | ---------- | ---------- | ---------- | -------- | ------------------------------ |
-| 0x00   | 0x00000000 | -          | -          | 11 bytes | ` @ @ @ »2E2`                  |
-| 0x40   | 0x01234567 | 0x89ABCDEF | -          | 19 bytes | `'k(@#I Q/o9z+M1k-\|0`         |
-| 0x3F   | 0xFFFFFFFF | 0xFFFFFFFF | 0xFFFFFFFF | 35 bytes | `?»?»?»?@?»?J?»?u?»?J?»?u y4`  |
+| 0x00   | 0x00000000 | -          | -          | 11 bytes | ` @ @ @ »2E2`                  |
+| 0x1F   | 0x01234567 | 0x89ABCDEF | -          | 19 bytes | `'k(_#I N/o9»+M1n1L'`          |
+| 0x3F   | 0xFFFFFFFF | 0xFFFFFFFF | 0xFFFFFFFF | 35 bytes | `?»?»?»?@?»?J?»?u?»?J?»?u y4`  |
 
 
 ## Performance
