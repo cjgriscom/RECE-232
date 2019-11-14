@@ -38,7 +38,7 @@ For more information, please refer to <https://unlicense.org>
 #include <stdint.h>
 
 size_t rece232_size(uint8_t nLongwords) {
-    return 3 + 8*nLongwords;
+    return 3 + 8*(size_t) nLongwords;
 }
 
 uint16_t rece232_crc16dnp_bit_4(uint16_t crc, uint32_t lw) {
