@@ -98,6 +98,7 @@ public class RECE232Tests {
 		// Corrupt makes an obvious high bit flip
 		// Flip makes a non-obvious bit flip 
 		String[] corruptionTests = new String[] {
+			"Clean",
 			"Pass, Drop 4, Corrupt 10",
 			"Fail, Drop 9, Corrupt 10",
 			"Fail, Drop 0, Drop 1",
@@ -162,8 +163,13 @@ public class RECE232Tests {
 			}
 			
 			boolean corrected = dec.load(mod.array());
-			if (corr.toLowerCase().contains("pass")) {
+			if (corr.toLowerCase().contains("pass") || corr.toLowerCase().contains("clean")) {
 				assertTrue(corrected);
+				if (corr.toLowerCase().contains("clean")) {
+					assertFalse(dec.madeCorrections());
+				} else {
+					assertTrue(dec.madeCorrections());
+				}
 			} else if (corr.toLowerCase().contains("fail")) {
 				assertFalse(corrected);
 			}

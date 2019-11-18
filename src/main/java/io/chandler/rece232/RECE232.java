@@ -60,10 +60,18 @@ public final class RECE232 {
 	
 	private RECE232() { }
 	
+	/**
+	 * Creates a new encoder instance. The encoder may be used repeatedly for new messages, but is not thread-safe.
+	 * @return A new RECE232Encoder
+	 */
 	public static RECE232Encoder getEncoder() {
 		return new RECE232Encoder();
 	}
-	
+
+	/**
+	 * Creates a new decoder instance. The decoder may be used repeatedly for new messages, but is not thread-safe.
+	 * @return A new RECE232Decoder
+	 */
 	public static RECE232Decoder getDecoder() {
 		return new RECE232Decoder();
 	}
@@ -163,6 +171,8 @@ public final class RECE232 {
 	public static final class RECE232Decoder {
 		private int nLongwords;
 		private int[] recon;
+		private boolean madeCorrections = false;
+		
 		private boolean skipRecoveryOnCorruptedChecksum = true;
 		private boolean failOnCorruptedChecksum = false;
 		private boolean convertTabs = false;
@@ -270,8 +280,16 @@ public final class RECE232 {
 		}
 		
 		private static final int GOOD_MASK = 0b11111_111111_11111;
+		
+		/**
+		 * Loads a message for decoding.
+		 * If load() returns true, the message contents may be retrieved from the decoder.
+		 * If load() returns false, other method behavior is undefined.
+		 * @param src Message bytes
+		 * @return True if the message was successfully decoded
+		 */
 		public boolean load(byte[] src) {
-			
+			this.madeCorrections = false;
 			int len = src.length;
 			len -= 3; // Subtract fletcher footer, remainder should be n*8b
 			if (len < 7) return false; // below minimum recoverable bytes
@@ -346,6 +364,8 @@ public final class RECE232 {
 					return false;
 			}
 			
+			if (fletFMask != GOOD_MASK) madeCorrections = true;
+			
 			this.recon = new int[nLongwords * 8];
 			int[] gaps = new int[nLongwords];
 			Arrays.fill(gaps, -1);
@@ -360,12 +380,14 @@ public final class RECE232 {
 					// No gaps; just verify checksum
 					if (!verifyReconChk(n*8)) {
 						badChks[n] = true;
+						madeCorrections = true;
 						if (DEBUG) System.out.println("Bad checksum " + n);
 					}
 				} else {
 					int chk = 0;
 					for (int b = n*8; b < n*8 + 8; b++) {
 						if (b == gapIdx) continue;
+						madeCorrections = true;
 						if (DEBUG) System.out.println("Fill gap chk" + b);
 						chk ^= recon[b];
 					}
@@ -497,6 +519,14 @@ public final class RECE232 {
 					recon[i*8 + 4] << 16 |
 					recon[i*8 + 5] << 21 |
 					recon[i*8 + 6] << 27;
+		}
+		
+		/**
+		 * Checks if the decoder attempted to correct message errors
+		 * @return
+		 */
+		public boolean madeCorrections() {
+			return madeCorrections;
 		}
 	}
 
